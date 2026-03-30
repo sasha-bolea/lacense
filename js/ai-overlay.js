@@ -913,6 +913,11 @@
                 ? AI_PHRASES[Math.floor(Math.random() * AI_PHRASES.length)]
                 : b.label + " " + b.conf;
         lbl.style.animationDelay = "380ms";
+        // Flip label below the box when it's too close to the top edge
+        var boxTop = bounds.top + bounds.height * b.yPct;
+        if (boxTop < 25) {
+            lbl.style.top = h + "px";
+        }
         el.appendChild(lbl);
 
         return el;

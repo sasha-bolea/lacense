@@ -45,17 +45,43 @@
         <!-- ============================================================
              LOGO HEADER
              ============================================================ -->
-        <header class="w-full flex justify-center items-center px-6 py-6 bg-white border-b border-black">
-            <div id="logo-container" class="relative inline-block">
-                <img
-                    alt="Grillz Tech Logo"
-                    class="h-32 object-contain block"
-                    src="logo.png"
-                    style="filter: invert(1);"
-                />
-                <div id="logo-overlays"></div>
-            </div>
-        </header>
+        <!-- 100vh landing: header + hero stacked -->
+        <div class="h-screen flex flex-col">
+            <div id="logo-overlays" style="position:fixed;inset:0;pointer-events:none;z-index:1000;"></div>
+            <header class="w-full flex justify-center items-center px-6 py-6 bg-white" style="position:relative;">
+                <div id="logo-container" class="relative inline-block">
+                    <img
+                        alt="Grillz Tech Logo"
+                        class="h-20 object-contain block"
+                        src="logo.png"
+                        style="filter: invert(1);"
+                    />
+                </div>
+            </header>
+
+            <!-- ====================================================
+                 HERO SECTION
+                 Full-viewport image with AI vision overlay on top.
+                 ==================================================== -->
+            <section
+                id="hero"
+                class="relative flex-1 overflow-hidden bg-white border-b border-black"
+            >
+                <!-- Hero image (replaced by canvas after threshold processing) -->
+                <div class="absolute inset-0 z-0">
+                    <img
+                        alt="Grillz"
+                        class="w-full h-full object-contain"
+                        style="object-fit:contain;width:100%;height:100%;"
+                        src="calco.png"
+                    />
+                </div>
+
+                <!-- AI vision bounding boxes (populated by ai-overlay.js) -->
+                <div id="ai-overlays"></div>
+            </section>
+        </div>
+        <!-- /.landing -->
 
         <!-- ============================================================
              SITE WRAPPER
@@ -63,28 +89,6 @@
              ============================================================ -->
         <div class="site-wrapper">
             <main>
-
-                <!-- ====================================================
-                     HERO SECTION
-                     Full-viewport image with AI vision overlay on top.
-                     The image is processed by hero-threshold.js (b&w).
-                     ==================================================== -->
-                <section
-                    id="hero"
-                    class="relative h-[calc(100vh-80px)] min-h-[500px] overflow-hidden bg-white border-b border-black"
-                >
-                    <!-- Hero image (replaced by canvas after threshold processing) -->
-                    <div class="absolute inset-0 z-0">
-                        <img
-                            alt="Grillz"
-                            class="w-full h-full object-contain"
-                            src="calco.png"
-                        />
-                    </div>
-
-                    <!-- AI vision bounding boxes (populated by ai-overlay.js) -->
-                    <div id="ai-overlays"></div>
-                </section>
 
 
                 <!-- ====================================================

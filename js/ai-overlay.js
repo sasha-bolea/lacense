@@ -818,6 +818,9 @@
         "logged",
     ];
 
+    // Shared reference to the logo intro box (set by initLogo, read by init)
+    var currentLogoIntroEl = null;
+
     /* -----------------------------------------------------------------
        getImageBounds(heroEl)
        Computes the actual rendered content area of the hero image
@@ -1067,30 +1070,6 @@
                         var logoOverlay   = document.getElementById("logo-overlays");
                         if (!logoContainer || !logoOverlay) return;
 
-                        // New header box (no caption)
-                        var lr = logoContainer.getBoundingClientRect();
-                        var hbox = document.createElement("div");
-                        hbox.className = "ai-bbox";
-                        var hw = Math.round(lr.width);
-                        var hh = Math.round(lr.height);
-                        hbox.style.left   = lr.left + "px";
-                        hbox.style.top    = lr.top  + "px";
-                        hbox.style.width  = hw + "px";
-                        hbox.style.height = hh + "px";
-                        var hsvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-                        hsvg.setAttribute("width", hw);
-                        hsvg.setAttribute("height", hh);
-                        hsvg.style.cssText = "position:absolute;top:0;left:0;overflow:visible";
-                        var hrect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                        hrect.setAttribute("x", "1"); hrect.setAttribute("y", "1");
-                        hrect.setAttribute("width", hw - 2); hrect.setAttribute("height", hh - 2);
-                        hrect.setAttribute("fill", "none");
-                        hrect.setAttribute("stroke", "#FF0000");
-                        hrect.setAttribute("stroke-width", "1.5");
-                        hsvg.appendChild(hrect);
-                        hbox.appendChild(hsvg);
-                        logoOverlay.appendChild(hbox);
-
                         // PROCESSING label — same approach as all other boxes:
                         // position:absolute inside #ai-overlays with explicit left/top
                         // pixels computed from hero dimensions. opacity:0 on insert
@@ -1149,7 +1128,6 @@
 
                         function updateLines() {
                             var errR  = el.getBoundingClientRect();
-                            var hboxR = hbox.getBoundingClientRect();
                             var procR = procEl.getBoundingClientRect();
                             var px = window.innerWidth < 768 ? procR.right : procR.left;
                             var py = procR.top + procR.height / 2;
@@ -1157,10 +1135,16 @@
                             line1.setAttribute("y1", errR.top + errR.height / 2);
                             line1.setAttribute("x2", px);
                             line1.setAttribute("y2", py);
-                            line2.setAttribute("x1", hboxR.right);
-                            line2.setAttribute("y1", hboxR.top + hboxR.height / 2);
-                            line2.setAttribute("x2", px);
-                            line2.setAttribute("y2", py);
+                            if (currentLogoIntroEl) {
+                                var logoR = currentLogoIntroEl.getBoundingClientRect();
+                                line2.setAttribute("x1", logoR.right);
+                                line2.setAttribute("y1", logoR.top + logoR.height / 2);
+                                line2.setAttribute("x2", px);
+                                line2.setAttribute("y2", py);
+                                line2.setAttribute("display", "");
+                            } else {
+                                line2.setAttribute("display", "none");
+                            }
                         }
 
                         updateLines();
@@ -1175,9 +1159,8 @@
                         window.addEventListener("scroll", updateLines);
 
                         cleanupExtras = function () {
-                            // hbox + its connecting line disappear immediately at errorLifetime
-                            hbox.remove();
-                            line2.remove();
+                            // Hide line2 (logo box) immediately
+                            line2.setAttribute("display", "none");
                             // Switch caption to DONE and stop dots
                             clearInterval(dotsInterval);
                             procEl.textContent = "DONE";
@@ -1245,17 +1228,21 @@
                 heroImgContainer.appendChild(c);
 
                 // Reveal then blink red→black 3 times, settle on black
+                // First red blink lasts 900ms, remaining blinks 200ms each
                 setTimeout(function () {
                     c.style.opacity = "1";
-                    var blink = 0;
-                    var iv = setInterval(function () {
-                        blink++;
-                        ctx.putImageData(blink % 2 === 0 ? imgDataRed : imgDataBlack, 0, 0);
-                        if (blink >= 5) {
-                            clearInterval(iv);
-                            ctx.putImageData(imgDataBlack, 0, 0);
-                        }
-                    }, 250);
+                    setTimeout(function () {
+                        ctx.putImageData(imgDataBlack, 0, 0);
+                        var blink = 1;
+                        var iv = setInterval(function () {
+                            blink++;
+                            ctx.putImageData(blink % 2 === 0 ? imgDataRed : imgDataBlack, 0, 0);
+                            if (blink >= 7) {
+                                clearInterval(iv);
+                                ctx.putImageData(imgDataBlack, 0, 0);
+                            }
+                        }, 200);
+                    }, 900);
                 }, 3500);
 
                 // Syncs both canvas and ERROR box to current layout
@@ -1378,13 +1365,20 @@
                 height: rect.height,
             };
             var el = makeBox(b, bounds);
+            el.style.position = "fixed";
             overlay.appendChild(el);
-            setTimeout(
-                function () {
-                    el.remove();
-                },
-                2000 + Math.random() * 1000,
-            );
+
+            function reposition() {
+                var r = container.getBoundingClientRect();
+                el.style.left   = r.left + r.width  * b.xPct + "px";
+                el.style.top    = r.top  + r.height * b.yPct + "px";
+            }
+            window.addEventListener("scroll", reposition);
+
+            setTimeout(function () {
+                el.remove();
+                window.removeEventListener("scroll", reposition);
+            }, 2000 + Math.random() * 1000);
         }
 
         // Scripted intro sequence — fires once at page load
@@ -1393,10 +1387,12 @@
             var rect   = container.getBoundingClientRect();
             var bounds = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
             var el     = makeBox(introB, bounds);
+            el.style.position = "fixed";
             var lbl    = el.querySelector(".ai-label");
             overlay.appendChild(el);
+            currentLogoIntroEl = el;
 
-            // Keep box aligned to logo on resize
+            // Keep box aligned to logo on resize and scroll
             var resizeTimer;
             function reposition() {
                 var r = container.getBoundingClientRect();
@@ -1413,6 +1409,7 @@
                 clearTimeout(resizeTimer);
                 resizeTimer = setTimeout(reposition, 50);
             });
+            window.addEventListener("scroll", reposition);
 
             var captions = ["what is that?", "LACENSE", "that's fucking cool"];
             var idx = 0;
@@ -1427,7 +1424,11 @@
                     setTimeout(nextCaption, 2000);
                 } else {
                     // Remove box after last caption
-                    setTimeout(function () { el.remove(); }, 2000);
+                    setTimeout(function () {
+                        el.remove();
+                        currentLogoIntroEl = null;
+                        window.removeEventListener("scroll", reposition);
+                    }, 2000);
                 }
             }
 

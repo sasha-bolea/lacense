@@ -1187,7 +1187,7 @@
             // with the same b&w threshold effect applied via canvas
             var heroImgContainer = hero.querySelector(".absolute");
             var overImg = new Image();
-            overImg.src = "grillz2.png";
+            overImg.src = "assets/grillz2.png";
 
             function applyOverlay() {
                 var c = document.createElement("canvas");
@@ -1242,7 +1242,7 @@
                                 ctx.putImageData(imgDataBlack, 0, 0);
                             }
                         }, 200);
-                    }, 900);
+                    }, 800);
                 }, 3500);
 
                 // Syncs both canvas and ERROR box to current layout

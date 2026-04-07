@@ -3,6 +3,8 @@
    Custom styles that extend Tailwind.
    ============================================================= */
 
+* { cursor: crosshair !important; }
+
 
 /* -------------------------------------------------------------
    Site wrapper

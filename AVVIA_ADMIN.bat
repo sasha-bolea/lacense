@@ -24,4 +24,4 @@ if not exist LacenseAdmin.class (
     )
 )
 
-java LacenseAdmin
+start "" javaw LacenseAdmin

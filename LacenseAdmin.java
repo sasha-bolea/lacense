@@ -1,6 +1,5 @@
 import javax.swing.*;
 import javax.swing.border.*;
-import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.*;
@@ -40,14 +39,16 @@ public class LacenseAdmin extends JFrame {
     private static final Font F_STATUS = new Font("Courier New", Font.PLAIN, 11);
 
     // ── Stato ─────────────────────────────────────────────────────────────────
-    private File selectedImageFile = null;
+    private File          selectedImageFile = null;
+    private BufferedImage croppedImage      = null;
     private List<Map<String, String>> posts = new ArrayList<>();
 
     // ── Widget principali ─────────────────────────────────────────────────────
     private JLabel     imagePreview;
-    private JTextField fTitle, fMaterial, fDetailLabel, fDetailValue, fWeight;
+    private JTextField fTitle, fMaterial, fDetailLabel, fDetailValue, fWeight, fFinitura;
     private JPanel     itemsGrid;
     private JLabel     statusLabel;
+    private JButton    btnAdd;
     private JButton    btnPublish;
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -136,21 +137,27 @@ public class LacenseAdmin extends JFrame {
         form.add(imagePreview);
         form.add(vspace(16));
 
-        fTitle       = addField(form, "TITLE",         "VVS_TITAN_GOLD");
-        fMaterial    = addField(form, "MATERIAL",      "18K_SOLID_GOLD");
-        fDetailLabel = addField(form, "DETAIL LABEL",  "CLARITY");
-        fDetailValue = addField(form, "DETAIL VALUE",  "VVS_DIAMONDS");
-        fWeight      = addField(form, "WEIGHT",        "42.5G");
-        form.add(vspace(6));
-
-        JButton btnAdd = blackButton("[ ADD_ITEM >> ]");
-        btnAdd.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-        btnAdd.addActionListener(e -> addItem());
-        form.add(btnAdd);
+        fTitle       = addField(form, "TITOLO",     "VVS_TITAN_GOLD");
+        fMaterial    = addField(form, "MATERIALE",  "18K_SOLID_GOLD");
+        fFinitura    = addField(form, "FINITURA",   "LUCIDO");
+        fDetailLabel = addField(form, "DESCRIZIONE", "CLARITY");
+        fDetailValue = addField(form, "VALORE",     "VVS_DIAMONDS");
+        fWeight      = addField(form, "PESO",       "42.5G");
 
         JScrollPane scroll = new JScrollPane(form);
         scroll.setBorder(null);
         root.add(scroll, BorderLayout.CENTER);
+
+        btnAdd = blackButton("[ ADD_ITEM >> ]");
+        btnAdd.setFont(new Font("Courier New", Font.BOLD, 13));
+        btnAdd.setPreferredSize(new Dimension(0, 44));
+        btnAdd.setBorder(new CompoundBorder(
+            new MatteBorder(2, 0, 0, 0, C_BLACK),
+            new EmptyBorder(0, 0, 0, 0)
+        ));
+        btnAdd.addActionListener(e -> addItem());
+        root.add(btnAdd, BorderLayout.SOUTH);
+
         return root;
     }
 
@@ -201,21 +208,41 @@ public class LacenseAdmin extends JFrame {
     // ═════════════════════════════════════════════════════════════════════════
 
     private void pickImage() {
-        JFileChooser fc = new JFileChooser();
-        fc.setFileFilter(new FileNameExtensionFilter("Immagini", "jpg", "jpeg", "png", "webp", "gif"));
-        if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        FileDialog fd = new FileDialog(this, "Seleziona immagine", FileDialog.LOAD);
+        fd.setFile("*.jpg;*.jpeg;*.png;*.webp;*.gif");
+        fd.setVisible(true);
+        repaint();
+        if (fd.getFile() == null) return;
 
-        selectedImageFile = fc.getSelectedFile();
+        File chosen = new File(fd.getDirectory(), fd.getFile());
+        BufferedImage raw;
         try {
-            BufferedImage raw = ImageIO.read(selectedImageFile);
-            if (raw != null) {
-                Image scaled = raw.getScaledInstance(300, 175, Image.SCALE_SMOOTH);
-                imagePreview.setIcon(new ImageIcon(scaled));
-                imagePreview.setText("");
-            }
+            raw = ImageIO.read(chosen);
+            if (raw == null) { setStatus("[ERR] Impossibile leggere l'immagine"); return; }
         } catch (IOException ex) {
             setStatus("[ERR] Impossibile leggere l'immagine");
+            return;
         }
+
+        CropDialog dlg = new CropDialog(this, raw);
+        dlg.setVisible(true);
+
+        BufferedImage preview;
+        if (dlg.isSkipped()) {
+            selectedImageFile = chosen;
+            croppedImage      = null;
+            preview           = raw;
+        } else {
+            BufferedImage cropped = dlg.getResult();
+            if (cropped == null) return; // annullato
+            selectedImageFile = chosen;
+            croppedImage      = cropped;
+            preview           = cropped;
+        }
+
+        Image scaled = preview.getScaledInstance(300, 175, Image.SCALE_SMOOTH);
+        imagePreview.setIcon(new ImageIcon(scaled));
+        imagePreview.setText("");
     }
 
     private void addItem() {
@@ -226,41 +253,40 @@ public class LacenseAdmin extends JFrame {
         String detailLabel = fieldVal(fDetailLabel, "CLARITY");
         String detailValue = fieldVal(fDetailValue, "VVS_DIAMONDS");
         String weight      = fieldVal(fWeight,      "42.5G");
-
-        if (title.isEmpty() || material.isEmpty() || detailLabel.isEmpty()
-                || detailValue.isEmpty() || weight.isEmpty()) {
-            setStatus("[ERR] Tutti i campi sono obbligatori");
-            return;
-        }
+        String finitura    = fieldVal(fFinitura,    "LUCIDO");
 
         // Copia immagine in assets/posts/
         String filename = System.currentTimeMillis() + "-"
             + selectedImageFile.getName().replaceAll("[^a-zA-Z0-9._-]", "_").toLowerCase();
+        File dest = new File(POSTS_DIR, filename);
         try {
-            Files.copy(selectedImageFile.toPath(),
-                       new File(POSTS_DIR, filename).toPath(),
-                       StandardCopyOption.REPLACE_EXISTING);
+            if (croppedImage != null) {
+                String ext = filename.contains(".") ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase() : "png";
+                ImageIO.write(croppedImage, (ext.equals("jpg") || ext.equals("jpeg")) ? "jpeg" : "png", dest);
+            } else {
+                Files.copy(selectedImageFile.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException ex) {
             setStatus("[ERR] Copia file fallita: " + ex.getMessage());
             return;
         }
 
         Map<String, String> item = new LinkedHashMap<>();
-        item.put("id",          UUID.randomUUID().toString());
-        item.put("filename",    filename);
-        item.put("title",       title.toUpperCase().replace(' ', '_'));
-        item.put("material",    material.toUpperCase().replace(' ', '_'));
-        item.put("detailLabel", detailLabel.toUpperCase().replace(' ', '_'));
-        item.put("detailValue", detailValue.toUpperCase().replace(' ', '_'));
-        item.put("weight",      weight.toUpperCase());
-        item.put("createdAt",   new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").format(new Date()));
+        item.put("id",       UUID.randomUUID().toString());
+        item.put("filename", filename);
+        item.put("title",    title.toUpperCase().replace(' ', '_'));
+        item.put("material", material.toUpperCase().replace(' ', '_'));
+        if (!detailLabel.isEmpty()) item.put("detailLabel", detailLabel.toUpperCase().replace(' ', '_'));
+        if (!detailValue.isEmpty()) item.put("detailValue", detailValue.toUpperCase().replace(' ', '_'));
+        if (!weight.isEmpty())      item.put("weight",      weight.toUpperCase());
+        if (!finitura.isEmpty())    item.put("finitura",    finitura.toUpperCase().replace(' ', '_'));
+        item.put("createdAt", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").format(new Date()));
 
         posts.add(item);
         savePosts();
         renderItems();
         resetForm();
-        setStatus("[OK] Item aggiunto: " + item.get("title") + " — push in corso...");
-        publish();
+        setStatus("[OK] Item aggiunto: " + item.get("title"));
     }
 
     private void deleteItem(Map<String, String> item) {
@@ -389,6 +415,7 @@ public class LacenseAdmin extends JFrame {
         }
         itemsGrid.revalidate();
         itemsGrid.repaint();
+        repaint();
     }
 
     private JPanel buildCard(Map<String, String> item) {
@@ -427,11 +454,14 @@ public class LacenseAdmin extends JFrame {
         info.add(lTitle);
         info.add(vspace(4));
 
-        String metaText = "<html><span style='font-family:Courier New;font-size:9px;color:#555'>"
-            + "MAT: " + item.get("material") + "<br>"
-            + item.get("detailLabel") + ": " + item.get("detailValue") + "<br>"
-            + "WT: " + item.get("weight")
-            + "</span></html>";
+        StringBuilder meta = new StringBuilder("<html><span style='font-family:Courier New;font-size:9px;color:#555'>");
+        meta.append("MAT: ").append(item.get("material"));
+        if (item.containsKey("finitura"))    meta.append("<br>FIN: ").append(item.get("finitura"));
+        if (item.containsKey("detailLabel") && item.containsKey("detailValue"))
+            meta.append("<br>").append(item.get("detailLabel")).append(": ").append(item.get("detailValue"));
+        if (item.containsKey("weight"))      meta.append("<br>WT: ").append(item.get("weight"));
+        meta.append("</span></html>");
+        String metaText = meta.toString();
         JLabel lMeta = new JLabel(metaText);
         lMeta.setFont(F_META);
         info.add(lMeta);
@@ -526,9 +556,11 @@ public class LacenseAdmin extends JFrame {
         imagePreview.setText("[ CLICCA PER SELEZIONARE FOTO ]");
         resetPlaceholder(fTitle,       "VVS_TITAN_GOLD");
         resetPlaceholder(fMaterial,    "18K_SOLID_GOLD");
+        resetPlaceholder(fFinitura,    "LUCIDO");
         resetPlaceholder(fDetailLabel, "CLARITY");
         resetPlaceholder(fDetailValue, "VVS_DIAMONDS");
         resetPlaceholder(fWeight,      "42.5G");
+        croppedImage = null;
     }
 
     private void resetPlaceholder(JTextField f, String placeholder) {
@@ -572,6 +604,205 @@ public class LacenseAdmin extends JFrame {
 
     private void setStatus(String msg) {
         SwingUtilities.invokeLater(() -> { if (statusLabel != null) statusLabel.setText("> " + msg); });
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    //  CropDialog + CropPanel
+    // ═════════════════════════════════════════════════════════════════════════
+
+    class CropDialog extends JDialog {
+        private BufferedImage result  = null;
+        private boolean       skipped = false;
+
+        CropDialog(Frame parent, BufferedImage img) {
+            super(parent, "// RITAGLIA_IMMAGINE", true);
+            setBackground(C_BLACK);
+            setLayout(new BorderLayout());
+
+            CropPanel panel = new CropPanel(img);
+            add(panel, BorderLayout.CENTER);
+
+            JPanel bar = new JPanel(new BorderLayout());
+            bar.setBackground(C_BLACK);
+            bar.setBorder(new EmptyBorder(10, 20, 10, 20));
+
+            JLabel hint = new JLabel("TRASCINA PER SPOSTARE  |  ANGOLI PER RIDIMENSIONARE");
+            hint.setFont(F_LABEL);
+            hint.setForeground(C_DGRAY);
+            bar.add(hint, BorderLayout.WEST);
+
+            JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+            btns.setBackground(C_BLACK);
+
+            JButton cancel = blackButton("[ ANNULLA ]");
+            cancel.addActionListener(e -> dispose());
+
+            JButton skip = blackButton("[ SALTA ]");
+            skip.addActionListener(e -> { skipped = true; dispose(); });
+
+            JButton ok = blackButton("[ CONFERMA ]");
+            ok.addActionListener(e -> { result = panel.getCropped(); dispose(); });
+
+            btns.add(cancel);
+            btns.add(skip);
+            btns.add(ok);
+            bar.add(btns, BorderLayout.EAST);
+            add(bar, BorderLayout.SOUTH);
+
+            setSize(760, 580);
+            setLocationRelativeTo(parent);
+        }
+
+        BufferedImage getResult() { return result; }
+        boolean isSkipped()       { return skipped; }
+    }
+
+    class CropPanel extends JPanel {
+        private final BufferedImage src;
+        private int cropX, cropY, cropSize;
+        private double scale = 1.0;
+        private int offX = 0, offY = 0;
+
+        private static final int H = 8;
+        private static final int DRAG_NONE = 0, DRAG_MOVE = 1, DRAG_NW = 2, DRAG_NE = 3, DRAG_SE = 4, DRAG_SW = 5;
+        private int dragMode = DRAG_NONE;
+        private int dragSX, dragSY, dragCropX, dragCropY, dragCropSize;
+
+        CropPanel(BufferedImage src) {
+            this.src = src;
+            int minDim = Math.min(src.getWidth(), src.getHeight());
+            cropSize = (int)(minDim * 0.8);
+            cropX = (src.getWidth()  - cropSize) / 2;
+            cropY = (src.getHeight() - cropSize) / 2;
+            setBackground(C_BLACK);
+
+            MouseAdapter ma = new MouseAdapter() {
+                public void mousePressed(MouseEvent e)  { onPress(e); }
+                public void mouseDragged(MouseEvent e)  { onDrag(e); }
+                public void mouseReleased(MouseEvent e) { dragMode = DRAG_NONE; updateCursor(e); }
+                public void mouseMoved(MouseEvent e)    { updateCursor(e); }
+            };
+            addMouseListener(ma);
+            addMouseMotionListener(ma);
+        }
+
+        private void computeTransform() {
+            int pw = getWidth(), ph = getHeight();
+            if (pw == 0 || ph == 0) return;
+            scale = Math.min((double)pw / src.getWidth(), (double)ph / src.getHeight());
+            offX  = (int)((pw - src.getWidth()  * scale) / 2);
+            offY  = (int)((ph - src.getHeight() * scale) / 2);
+        }
+
+        private int toSX(int ix) { return (int)(ix * scale) + offX; }
+        private int toSY(int iy) { return (int)(iy * scale) + offY; }
+        private int toIX(int sx) { return (int)((sx - offX) / scale); }
+        private int toIY(int sy) { return (int)((sy - offY) / scale); }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            computeTransform();
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+            int rw = (int)(src.getWidth()  * scale);
+            int rh = (int)(src.getHeight() * scale);
+            g2.drawImage(src, offX, offY, rw, rh, null);
+
+            int sx = toSX(cropX), sy = toSY(cropY), ss = (int)(cropSize * scale);
+
+            g2.setColor(new Color(0, 0, 0, 160));
+            g2.fillRect(offX,      offY, sx - offX,             rh);
+            g2.fillRect(sx + ss,   offY, offX + rw - (sx + ss), rh);
+            g2.fillRect(sx,        offY, ss, sy - offY);
+            g2.fillRect(sx, sy + ss,     ss, offY + rh - (sy + ss));
+
+            g2.setColor(Color.RED);
+            g2.setStroke(new BasicStroke(1.5f));
+            g2.drawRect(sx, sy, ss, ss);
+
+            int[][] corners = {{sx, sy}, {sx+ss, sy}, {sx+ss, sy+ss}, {sx, sy+ss}};
+            for (int[] c : corners) {
+                g2.setColor(Color.RED);   g2.fillRect(c[0]-H, c[1]-H, H*2, H*2);
+                g2.setColor(Color.WHITE); g2.drawRect(c[0]-H, c[1]-H, H*2-1, H*2-1);
+            }
+
+            g2.setColor(Color.WHITE);
+            g2.setFont(F_LABEL);
+            g2.drawString(cropSize + " x " + cropSize + " px", sx + 4, sy > 18 ? sy - 4 : sy + ss + 14);
+            g2.dispose();
+        }
+
+        private int hitTest(int mx, int my) {
+            int sx = toSX(cropX), sy = toSY(cropY), ss = (int)(cropSize * scale);
+            if (near(mx,sx,H)    && near(my,sy,H))    return DRAG_NW;
+            if (near(mx,sx+ss,H) && near(my,sy,H))    return DRAG_NE;
+            if (near(mx,sx+ss,H) && near(my,sy+ss,H)) return DRAG_SE;
+            if (near(mx,sx,H)    && near(my,sy+ss,H)) return DRAG_SW;
+            if (mx>=sx && mx<=sx+ss && my>=sy && my<=sy+ss) return DRAG_MOVE;
+            return DRAG_NONE;
+        }
+
+        private boolean near(int a, int b, int tol) { return Math.abs(a-b) <= tol; }
+
+        private void onPress(MouseEvent e) {
+            computeTransform();
+            dragMode = hitTest(e.getX(), e.getY());
+            dragSX = e.getX(); dragSY = e.getY();
+            dragCropX = cropX; dragCropY = cropY; dragCropSize = cropSize;
+        }
+
+        private void onDrag(MouseEvent e) {
+            if (dragMode == DRAG_NONE) return;
+            computeTransform();
+            int iw = src.getWidth(), ih = src.getHeight();
+            if (dragMode == DRAG_MOVE) {
+                int dx = (int)((e.getX() - dragSX) / scale);
+                int dy = (int)((e.getY() - dragSY) / scale);
+                cropX = Math.max(0, Math.min(iw - cropSize, dragCropX + dx));
+                cropY = Math.max(0, Math.min(ih - cropSize, dragCropY + dy));
+            } else {
+                int ancX, ancY;
+                switch (dragMode) {
+                    case DRAG_NW: ancX = dragCropX + dragCropSize; ancY = dragCropY + dragCropSize; break;
+                    case DRAG_NE: ancX = dragCropX;                ancY = dragCropY + dragCropSize; break;
+                    case DRAG_SW: ancX = dragCropX + dragCropSize; ancY = dragCropY;                break;
+                    default:      ancX = dragCropX;                ancY = dragCropY;                break;
+                }
+                int mIX = toIX(e.getX()), mIY = toIY(e.getY());
+                int newSize = Math.max(20, Math.max(Math.abs(mIX - ancX), Math.abs(mIY - ancY)));
+                int newX = (dragMode == DRAG_NW || dragMode == DRAG_SW) ? ancX - newSize : ancX;
+                int newY = (dragMode == DRAG_NW || dragMode == DRAG_NE) ? ancY - newSize : ancY;
+                newX = Math.max(0, newX); newY = Math.max(0, newY);
+                newSize = Math.min(newSize, iw - newX);
+                newSize = Math.min(newSize, ih - newY);
+                cropX = newX; cropY = newY; cropSize = newSize;
+            }
+            repaint();
+        }
+
+        private void updateCursor(MouseEvent e) {
+            computeTransform();
+            switch (hitTest(e.getX(), e.getY())) {
+                case DRAG_MOVE: setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)); break;
+                case DRAG_NW: case DRAG_SE: setCursor(Cursor.getPredefinedCursor(Cursor.NW_RESIZE_CURSOR)); break;
+                case DRAG_NE: case DRAG_SW: setCursor(Cursor.getPredefinedCursor(Cursor.NE_RESIZE_CURSOR)); break;
+                default: setCursor(Cursor.getDefaultCursor());
+            }
+        }
+
+        BufferedImage getCropped() {
+            int cx = Math.max(0, cropX), cy = Math.max(0, cropY);
+            int cs = Math.min(cropSize, Math.min(src.getWidth() - cx, src.getHeight() - cy));
+            BufferedImage copy = new BufferedImage(cs, cs, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = copy.createGraphics();
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, cs, cs);
+            g.drawImage(src.getSubimage(cx, cy, cs, cs), 0, 0, null);
+            g.dispose();
+            return copy;
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════════
